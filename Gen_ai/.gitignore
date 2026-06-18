@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and databases
+*.log
+*.csv
+*.db
+interview_logs.csv
+interview_logs.db
+server.err.log
+server.out.log

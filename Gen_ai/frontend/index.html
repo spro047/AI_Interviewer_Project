@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interview.AI - Adaptive Mock Interview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-microchip"></i>
+                    <span>Interview.AI</span>
+                </div>
+                <p class="sidebar-tag">Adaptive Mock Interview</p>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <h3>Recent Interviews</h3>
+                    <button id="refreshSessionsBtn" class="btn-icon" title="Refresh" aria-label="Refresh sessions">
+                        <i class="fa-solid fa-rotate"></i>
+                    </button>
+                </div>
+                <div id="sessionList" class="session-list">
+                    <p class="session-empty">No past interviews yet.</p>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <details class="about-section">
+                    <summary class="about-summary">
+                        <span class="about-summary-label">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span>About this engine</span>
+                        </span>
+                        <i class="fa-solid fa-chevron-down about-chevron"></i>
+                    </summary>
+                    <div class="about-content">
+                        <div class="about-block">
+                            <h4>How answers are scored</h4>
+                            <p class="about-intro">A weighted hybrid of three independent signals:</p>
+                            <ul class="about-list">
+                                <li>
+                                    <span class="about-tag" style="--tag-bg: var(--success-soft); --tag-color: var(--success);">TF-IDF · 30%</span>
+                                    <span>Keyword overlap with the ideal answer.</span>
+                                </li>
+                                <li>
+                                    <span class="about-tag" style="--tag-bg: var(--primary-soft); --tag-color: var(--text);">BERT · 50%</span>
+                                    <span>Semantic similarity via <code>all-MiniLM-L6-v2</code> embeddings.</span>
+                                </li>
+                                <li>
+                                    <span class="about-tag" style="--tag-bg: var(--warning-soft); --tag-color: var(--warning);">LLM · 20%</span>
+                                    <span>Concept coverage, depth, clarity, missing concepts.</span>
+                                </li>
+                            </ul>
+                            <p class="about-formula">Final&nbsp;=&nbsp;0.3·TF-IDF&nbsp;+&nbsp;0.5·semantic&nbsp;+&nbsp;0.2·LLM</p>
+                            <p class="about-foot">Difficulty adapts after every answer: <strong>&gt; 7.5</strong> → harder, <strong>&lt; 4</strong> → easier.</p>
+                        </div>
+                        <div class="about-block">
+                            <h4>Models in use</h4>
+                            <ul class="about-list about-list-models">
+                                <li>
+                                    <i class="fa-solid fa-brain"></i>
+                                    <span><strong>LLM</strong> — <code>Qwen/Qwen2.5-7B-Instruct</code> via HuggingFace Inference API</span>
+                                </li>
+                                <li>
+                                    <i class="fa-solid fa-vector-square"></i>
+                                    <span><strong>Embeddings</strong> — <code>sentence-transformers/all-MiniLM-L6-v2</code> (local)</span>
+                                </li>
+                                <li>
+                                    <i class="fa-solid fa-sliders"></i>
+                                    <span><strong>Adaptive</strong> — rule-based, smoothed <code>0.7·current + 0.3·prev</code></span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="theme-switch">
+                    <span class="theme-label">
+                        <i class="fa-solid fa-sun" id="themeIconLight"></i>
+                        <i class="fa-solid fa-moon" id="themeIconDark"></i>
+                        <span id="themeLabelText">Light</span>
+                    </span>
+                    <button id="themeToggle" class="theme-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">
+                        <span class="theme-toggle-knob"></span>
+                    </button>
+                </div>
+                <div class="user-chip">
+                    <i class="fa-solid fa-user"></i>
+                    <span id="userIdLabel" title="Your user ID">user</span>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <!-- VIEW: SETUP -->
+            <section class="view view-setup" data-view="setup">
+                <div class="view-inner setup-grid">
+                    <div class="setup-left">
+                        <div class="view-header">
+                            <h1>Start a new interview</h1>
+                            <p class="view-subtitle">Configure your session. The engine adapts to your performance in real time.</p>
+                        </div>
+
+                        <div class="card setup-card">
+                            <div class="field">
+                                <label for="roleSelect">Target role</label>
+                                <select id="roleSelect">
+                                    <optgroup label="Software Engineering">
+                                        <option value="Software Engineer" selected>Software Engineer</option>
+                                        <option value="Frontend Engineer">Frontend Engineer</option>
+                                        <option value="Backend Engineer">Backend Engineer</option>
+                                        <option value="Full-Stack Engineer">Full-Stack Engineer</option>
+                                        <option value="Mobile Engineer">Mobile Engineer</option>
+                                    </optgroup>
+                                    <optgroup label="AI / ML">
+                                        <option value="AI Engineer">AI Engineer</option>
+                                        <option value="Machine Learning Engineer">Machine Learning Engineer</option>
+                                        <option value="Data Scientist">Data Scientist</option>
+                                        <option value="MLOps Engineer">MLOps Engineer</option>
+                                    </optgroup>
+                                    <optgroup label="Cloud & DevOps">
+                                        <option value="DevOps Engineer">DevOps Engineer</option>
+                                        <option value="Site Reliability Engineer (SRE)">Site Reliability Engineer (SRE)</option>
+                                        <option value="Cloud Engineer">Cloud Engineer</option>
+                                        <option value="Platform Engineer">Platform Engineer</option>
+                                    </optgroup>
+                                    <optgroup label="Data">
+                                        <option value="Data Engineer">Data Engineer</option>
+                                        <option value="Data Analyst">Data Analyst</option>
+                                    </optgroup>
+                                    <optgroup label="Quality & Security">
+                                        <option value="QA / Test Engineer">QA / Test Engineer</option>
+                                        <option value="Security Engineer">Security Engineer</option>
+                                    </optgroup>
+                                    <optgroup label="Leadership">
+                                        <option value="Engineering Manager">Engineering Manager</option>
+                                        <option value="Tech Lead">Tech Lead</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="topicSelect">Specialization / topic</label>
+                                <select id="topicSelect">
+                                    <optgroup label="Languages">
+                                        <option value="Python">Python</option>
+                                        <option value="JavaScript">JavaScript</option>
+                                        <option value="TypeScript">TypeScript</option>
+                                        <option value="Java">Java</option>
+                                        <option value="Go">Go</option>
+                                        <option value="C++">C++</option>
+                                        <option value="Rust">Rust</option>
+                                    </optgroup>
+                                    <optgroup label="Web Frontend">
+                                        <option value="React.js">React.js</option>
+                                        <option value="Vue.js">Vue.js</option>
+                                        <option value="Angular">Angular</option>
+                                        <option value="HTML / CSS">HTML / CSS</option>
+                                    </optgroup>
+                                    <optgroup label="Web Backend">
+                                        <option value="Node.js">Node.js</option>
+                                        <option value="REST APIs">REST APIs</option>
+                                        <option value="GraphQL">GraphQL</option>
+                                        <option value="Microservices">Microservices</option>
+                                        <option value="System Design">System Design</option>
+                                    </optgroup>
+                                    <optgroup label="Mobile">
+                                        <option value="iOS Development">iOS Development</option>
+                                        <option value="Android Development">Android Development</option>
+                                        <option value="React Native">React Native</option>
+                                        <option value="Flutter">Flutter</option>
+                                    </optgroup>
+                                    <optgroup label="Databases">
+                                        <option value="SQL">SQL</option>
+                                        <option value="PostgreSQL">PostgreSQL</option>
+                                        <option value="MongoDB">MongoDB</option>
+                                        <option value="Redis">Redis</option>
+                                    </optgroup>
+                                    <optgroup label="Cloud">
+                                        <option value="AWS">AWS</option>
+                                        <option value="Azure">Azure</option>
+                                        <option value="Google Cloud (GCP)">Google Cloud (GCP)</option>
+                                        <option value="Cloud Architecture">Cloud Architecture</option>
+                                    </optgroup>
+                                    <optgroup label="DevOps">
+                                        <option value="Docker">Docker</option>
+                                        <option value="Kubernetes">Kubernetes</option>
+                                        <option value="CI/CD">CI/CD</option>
+                                        <option value="Terraform">Terraform</option>
+                                    </optgroup>
+                                    <optgroup label="Networks">
+                                        <option value="Computer Networks" selected>Computer Networks</option>
+                                        <option value="TCP/IP">TCP/IP</option>
+                                        <option value="DNS">DNS</option>
+                                        <option value="Load Balancing">Load Balancing</option>
+                                    </optgroup>
+                                    <optgroup label="Security">
+                                        <option value="Web Security">Web Security</option>
+                                        <option value="Cryptography">Cryptography</option>
+                                        <option value="OAuth & Authentication">OAuth & Authentication</option>
+                                    </optgroup>
+                                    <optgroup label="AI / ML">
+                                        <option value="Machine Learning">Machine Learning</option>
+                                        <option value="Deep Learning">Deep Learning</option>
+                                        <option value="Natural Language Processing (NLP)">Natural Language Processing (NLP)</option>
+                                        <option value="Computer Vision">Computer Vision</option>
+                                        <option value="Large Language Models (LLMs)">Large Language Models (LLMs)</option>
+                                        <option value="RAG Systems">RAG Systems</option>
+                                        <option value="Prompt Engineering">Prompt Engineering</option>
+                                    </optgroup>
+                                    <optgroup label="Data">
+                                        <option value="Data Structures & Algorithms">Data Structures & Algorithms</option>
+                                        <option value="Data Pipelines">Data Pipelines</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>Initial difficulty</label>
+                                <div class="diff-pills" role="tablist">
+                                    <button class="diff-pill" data-val="easy" role="tab">Easy</button>
+                                    <button class="diff-pill active" data-val="medium" role="tab">Medium</button>
+                                    <button class="diff-pill" data-val="hard" role="tab">Hard</button>
+                                </div>
+                            </div>
+                            <div class="setup-actions">
+                                <button id="startBtn" class="btn btn-primary">
+                                    <i class="fa-solid fa-play"></i>
+                                    <span>Start Interview</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setup-right">
+                        <div class="card preset-card-wrap">
+                            <h3 class="card-title">Quick start</h3>
+                            <p class="card-sub">Pick a popular role + topic combo.</p>
+                            <div class="preset-grid">
+                                <button class="preset" data-role="AI Engineer" data-topic="Large Language Models (LLMs)" data-difficulty="medium">
+                                    <i class="fa-solid fa-robot"></i>
+                                    <div class="preset-title">AI Engineer</div>
+                                    <div class="preset-topic">LLMs</div>
+                                </button>
+                                <button class="preset" data-role="DevOps Engineer" data-topic="Kubernetes" data-difficulty="medium">
+                                    <i class="fa-solid fa-dharmachakra"></i>
+                                    <div class="preset-title">DevOps Engineer</div>
+                                    <div class="preset-topic">Kubernetes</div>
+                                </button>
+                                <button class="preset" data-role="Frontend Engineer" data-topic="React.js" data-difficulty="easy">
+                                    <i class="fa-solid fa-code"></i>
+                                    <div class="preset-title">Frontend Engineer</div>
+                                    <div class="preset-topic">React.js</div>
+                                </button>
+                                <button class="preset" data-role="Data Scientist" data-topic="Machine Learning" data-difficulty="hard">
+                                    <i class="fa-solid fa-chart-line"></i>
+                                    <div class="preset-title">Data Scientist</div>
+                                    <div class="preset-topic">Machine Learning</div>
+                                </button>
+                                <button class="preset" data-role="Backend Engineer" data-topic="System Design" data-difficulty="hard">
+                                    <i class="fa-solid fa-server"></i>
+                                    <div class="preset-title">Backend Engineer</div>
+                                    <div class="preset-topic">System Design</div>
+                                </button>
+                                <button class="preset" data-role="Cloud Engineer" data-topic="AWS" data-difficulty="medium">
+                                    <i class="fa-solid fa-cloud"></i>
+                                    <div class="preset-title">Cloud Engineer</div>
+                                    <div class="preset-topic">AWS</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card tips-card">
+                            <h3 class="card-title">What to expect</h3>
+                            <ul class="tips-list">
+                                <li>
+                                    <i class="fa-solid fa-bolt"></i>
+                                    <div>
+                                        <strong>Adaptive difficulty</strong>
+                                        <span>The engine starts at your chosen level and adjusts after every answer.</span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    <div>
+                                        <strong>Hybrid scoring</strong>
+                                        <span>TF-IDF, BERT, and an LLM combine to score clarity, depth, and accuracy.</span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <i class="fa-solid fa-comments"></i>
+                                    <div>
+                                        <strong>Explainable feedback</strong>
+                                        <span>After each answer you get a breakdown of what's missing and what to improve.</span>
+                                    </div>
+                                </li>
+                                <li>
+                                    <i class="fa-solid fa-microphone"></i>
+                                    <div>
+                                        <strong>Voice-ready (Chrome / Edge)</strong>
+                                        <span>Click the mic in the interview to dictate your answer hands-free.</span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VIEW: INTERVIEW -->
+            <section class="view view-interview" data-view="interview" hidden>
+                <div class="view-inner interview-grid">
+                    <div class="interview-main">
+                        <div class="interview-header">
+                            <div>
+                                <p class="interview-meta">
+                                    <span id="roleLabel" class="meta-pill">Role</span>
+                                    <span id="topicLabel" class="meta-pill">Topic</span>
+                                </p>
+                                <h1 class="interview-title">Adaptive Interview</h1>
+                            </div>
+                            <div class="interview-status">
+                                <span class="status-dot"></span>
+                                <span id="levelBadge" class="status-text">Medium</span>
+                            </div>
+                        </div>
+
+                        <div class="chat" id="chatbox">
+                            <div class="chat-empty">System initialized. The first question is on its way.</div>
+                        </div>
+
+                        <div class="composer">
+                            <div id="recordingIndicator" class="recording-pill" hidden>
+                                <i class="fa-solid fa-microphone fa-beat"></i> Listening...
+                            </div>
+                            <div class="composer-row">
+                                <textarea id="answerInput" placeholder="Type your answer here, or click the mic to speak..." rows="2"></textarea>
+                                <div class="composer-actions">
+                                    <button id="micBtn" class="btn btn-ghost btn-icon" title="Use microphone" aria-label="Use microphone">
+                                        <i class="fa-solid fa-microphone"></i>
+                                    </button>
+                                    <button id="submitBtn" class="btn btn-primary" title="Submit answer" aria-label="Submit answer">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="composer-footer">
+                                <span class="timer-text">Time on this question: <strong id="timeVal">0s</strong></span>
+                                <button id="endBtn" class="btn btn-ghost btn-danger-text" title="End interview">
+                                    <i class="fa-solid fa-power-off"></i>
+                                    <span>End Interview</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <aside class="live-panel">
+                        <div class="card live-card">
+                            <h3 class="card-title">Live Score</h3>
+                            <div class="score-circle">
+                                <svg viewBox="0 0 36 36" class="circular-chart">
+                                    <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+                                    <path id="scorePath" class="circle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"></path>
+                                    <text x="18" y="20.35" class="percentage" id="scoreText">--</text>
+                                </svg>
+                                <p class="score-caption">Latest answer score</p>
+                            </div>
+
+                            <div class="bar-group">
+                                <div class="bar-row">
+                                    <span class="bar-label">Semantic (BERT)</span>
+                                    <span class="bar-value" id="semanticVal">--</span>
+                                </div>
+                                <div class="bar"><div class="bar-fill" id="semanticBar" style="width: 0%"></div></div>
+                            </div>
+                            <div class="bar-group">
+                                <div class="bar-row">
+                                    <span class="bar-label">Keyword match (TF-IDF)</span>
+                                    <span class="bar-value" id="keywordVal">--</span>
+                                </div>
+                                <div class="bar"><div class="bar-fill" id="keywordBar" style="width: 0%"></div></div>
+                            </div>
+                            <div class="bar-group">
+                                <div class="bar-row">
+                                    <span class="bar-label">LLM quality</span>
+                                    <span class="bar-value" id="llmVal">--</span>
+                                </div>
+                                <div class="bar"><div class="bar-fill" id="llmBar" style="width: 0%"></div></div>
+                            </div>
+                        </div>
+
+                        <div class="card feedback-card">
+                            <h3 class="card-title">Explainable Feedback</h3>
+                            <div id="feedbackBox" class="feedback-content empty">
+                                Submit an answer to see AI insights.
+                            </div>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
+            <!-- VIEW: REPORT -->
+            <section class="view view-report" data-view="report" hidden>
+                <div class="view-inner">
+                    <div class="view-header report-header">
+                        <div>
+                            <h1>Interview Summary</h1>
+                            <p class="view-subtitle">Performance breakdown and all questions asked in this session.</p>
+                        </div>
+                        <div class="report-actions-top">
+                            <button id="backToStartBtn" class="btn btn-ghost">
+                                <i class="fa-solid fa-arrow-left"></i>
+                                <span>Back to start</span>
+                            </button>
+                            <button id="downloadPdfBtn" class="btn btn-ghost">
+                                <i class="fa-solid fa-file-pdf"></i>
+                                <span>Download PDF</span>
+                            </button>
+                            <button id="restartBtn" class="btn btn-primary">
+                                <i class="fa-solid fa-rotate-right"></i>
+                                <span>New Interview</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="report-summary">
+                            <div class="metric-block">
+                                <span class="metric-label">Final score</span>
+                                <span class="metric-value" id="finalScoreBadge">0.00 / 10</span>
+                            </div>
+                            <div class="metric-block">
+                                <span class="metric-label">Questions</span>
+                                <span class="metric-value" id="totalQuestions">0</span>
+                            </div>
+                            <div class="metric-block">
+                                <span class="metric-label">Highest</span>
+                                <span class="metric-value" id="highestScore">0.00</span>
+                            </div>
+                            <div class="metric-block">
+                                <span class="metric-label">Lowest</span>
+                                <span class="metric-value" id="lowestScore">0.00</span>
+                            </div>
+                            <div class="metric-block">
+                                <span class="metric-label">Total time</span>
+                                <span class="metric-value" id="totalTime">0m 0s</span>
+                            </div>
+                            <div class="metric-block">
+                                <span class="metric-label">Trend</span>
+                                <span class="metric-value" id="trendValue">—</span>
+                            </div>
+                        </div>
+
+                        <div class="report-meta" id="reportMeta"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="card-title">Strong areas</h3>
+                        <ul id="strongAreasList" class="report-list"></ul>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="card-title">Areas to improve</h3>
+                        <ul id="weakAreasList" class="report-list"></ul>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="card-title">Recommended roadmap</h3>
+                        <p id="roadmapText" class="roadmap-text">Evaluating performance...</p>
+                    </div>
+
+                    <div class="card">
+                        <h3 class="card-title">
+                            All questions asked
+                            <span class="count-badge" id="questionCount"></span>
+                        </h3>
+                        <div id="reportQuestionsList" class="report-questions-list"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- PAST INTERVIEW MODAL -->
+    <div class="modal" id="pastModal" hidden>
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pastModalTitle">
+            <div class="modal-header">
+                <h2 id="pastModalTitle">Past Interview</h2>
+                <button class="btn-icon" data-close aria-label="Close">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="pastModalBody">
+                <p class="session-empty">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/8.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+    <script src="app.js?v=3"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+gunicorn
+scikit-learn
+sentence-transformers
+openai
+pydantic
+numpy
+python-dotenv
+huggingface-hub
+
