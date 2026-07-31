@@ -1,5 +1,11 @@
 from typing import Dict
 
+"""
+Adaptive difficulty controller for the interview system.
+Tracks per-user performance history and adjusts difficulty (easy/medium/hard)
+based on smoothed scores using a 70/30 current/previous weighting.
+"""
+
 class AdaptiveEngine:
     def __init__(self):
         # Maps user_id -> list of previous scores
@@ -7,6 +13,11 @@ class AdaptiveEngine:
         self.levels = ["easy", "medium", "hard"]
 
     def update_and_get_difficulty(self, user_id: str, current_difficulty: str, current_score: float) -> str:
+        """
+        Update user's performance history and return the next difficulty level.
+        Uses 70/30 exponential smoothing (current/previous) to prevent oscillation.
+        Bumps up when smoothed score > 0.75, down when < 0.4.
+        """
         # Scale score from 1-10 to 0-1 for difficulty logic
         normalized_score = current_score / 10.0
         

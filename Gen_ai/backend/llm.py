@@ -10,6 +10,11 @@ except ImportError:
     HAS_HF_HUB = False
 
 
+"""
+LLM client wrapping Hugging Face Inference API for question generation and answer evaluation.
+Reads system prompt from system_prompt.txt, enforces strict JSON output, and handles fallback.
+"""
+
 DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 DEFAULT_TIMEOUT = 30
 
@@ -17,6 +22,7 @@ SYSTEM_PROMPT_PATH = Path(__file__).parent / "system_prompt.txt"
 
 
 def _load_system_prompt() -> str:
+    """Load system prompt from file, with a minimal fallback if file is missing."""
     try:
         return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -24,6 +30,7 @@ def _load_system_prompt() -> str:
 
 
 def _strip_code_fence(text: str) -> str:
+    """Remove markdown code fences (```json ... ```) from LLM output."""
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
@@ -32,6 +39,7 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _extract_json(text: str) -> dict:
+    """Parse JSON from LLM output, stripping code fences and extracting first JSON object if needed."""
     text = _strip_code_fence(text)
     try:
         return json.loads(text)
@@ -43,11 +51,13 @@ def _extract_json(text: str) -> dict:
 
 
 class LLMUnavailable(RuntimeError):
+    """Raised when LLM cannot be initialized (missing token, package, or invalid config)."""
     pass
 
 
 class LLMClient:
     def __init__(self, model: str | None = None, token: str | None = None, timeout: int = DEFAULT_TIMEOUT):
+        """Initialize HF InferenceClient; raises LLMUnavailable if deps/token missing."""
         if not HAS_HF_HUB:
             raise LLMUnavailable("huggingface-hub is not installed; run `pip install huggingface-hub`.")
 
@@ -60,6 +70,7 @@ class LLMClient:
         self.client = InferenceClient(model=self.model, token=token, timeout=timeout)
 
     def _chat(self, user_message: str, system: str | None = None, max_tokens: int = 512) -> str:
+        """Send a chat completion request to the HF Inference API and return the response text."""
         messages = []
         messages.append({"role": "system", "content": system or self.system_prompt})
         messages.append({"role": "user", "content": user_message})
@@ -71,12 +82,17 @@ class LLMClient:
         return resp.choices[0].message.content
 
     def warm_up(self) -> None:
+        """Send a tiny request to warm up the model on HF's infrastructure (reduces first-call latency)."""
         try:
             self._chat("Reply with the single word: ok", max_tokens=8)
         except Exception:
             pass
 
     def generate_question(self, role: str, topic: str, difficulty: str, history: list | None = None) -> tuple[str, str]:
+        """
+        Generate a unique interview question via LLM, avoiding repeats from recent history.
+        Returns (question, ideal_answer) tuple; raises LLMUnavailable on failure.
+        """
         history = history or []
         recent = history[-5:]
         if recent:
@@ -104,6 +120,11 @@ class LLMClient:
         return question, ideal
 
     def evaluate_explanation(self, question: str, user_answer: str, ideal_answer: str, base_metrics: dict) -> dict:
+        """
+        Evaluate a candidate's answer using LLM, returning structured scores and feedback.
+        Includes concept coverage, depth, clarity, missing concepts, and improvement suggestions.
+        All numeric fields clamped to 0–1 range.
+        """
         tfidf = float(base_metrics.get("tfidf", 0.0) or 0.0)
         semantic = float(base_metrics.get("semantic", 0.0) or 0.0)
 

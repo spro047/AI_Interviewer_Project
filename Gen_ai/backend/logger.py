@@ -5,18 +5,27 @@ import time
 from typing import Dict, Any, List, Optional
 
 
+"""
+Dual-output logger writing interview evaluations to both CSV and SQLite.
+Manages a sessions table for interview-level aggregates and a logs table for per-question records.
+Handles schema migration for legacy databases on first run.
+"""
+
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Check if a column exists in a SQLite table."""
     cur = conn.execute(f"PRAGMA table_info({table})")
     return any(row[1] == column for row in cur.fetchall())
 
 
 class InterviewLogger:
     def __init__(self, csv_file="interview_logs.csv", db_file="interview_logs.db"):
+        """Initialize logger with CSV and SQLite file paths, creating tables if needed."""
         self.csv_file = csv_file
         self.db_file = db_file
         self.setup_files()
 
     def setup_files(self):
+        """Create CSV with headers and SQLite tables (logs + sessions) with indexes; migrates legacy schema."""
         csv_has_data = os.path.exists(self.csv_file) and os.path.getsize(self.csv_file) > 0
         if not csv_has_data:
             with open(self.csv_file, mode='w', newline='', encoding='utf-8') as f:
@@ -72,6 +81,7 @@ class InterviewLogger:
         conn.close()
 
     def ensure_session(self, session_id: str, user_id: str, role: str, topic: str, initial_difficulty: str) -> None:
+        """Create a session row if it doesn't exist yet (called on first evaluation in a session)."""
         if not session_id:
             return
         conn = sqlite3.connect(self.db_file)
@@ -84,6 +94,7 @@ class InterviewLogger:
         conn.close()
 
     def end_session(self, session_id: str) -> None:
+        """Finalize a session: set ended_at and compute aggregates (count, avg/max/min score)."""
         if not session_id:
             return
         conn = sqlite3.connect(self.db_file)
@@ -104,6 +115,7 @@ class InterviewLogger:
         conn.close()
 
     def log_evaluation(self, data: Dict[str, Any]):
+        """Append a single evaluation row to both CSV and SQLite logs tables."""
         session_id = data.get("session_id", "")
         user_id = data.get("user_id", "")
         created_at = data.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
@@ -146,6 +158,7 @@ class InterviewLogger:
         conn.close()
 
     def list_sessions(self, user_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return recent sessions (optionally filtered by user_id) with summary stats, newest first."""
         conn = sqlite3.connect(self.db_file)
         c = conn.cursor()
         if user_id:
@@ -177,6 +190,7 @@ class InterviewLogger:
         return [self._row_to_session_summary(r) for r in rows]
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve full session details including all questions, answers, and per-question scores."""
         conn = sqlite3.connect(self.db_file)
         c = conn.cursor()
         c.execute(
@@ -222,6 +236,7 @@ class InterviewLogger:
         return session
 
     def _row_to_session_summary(self, row) -> Dict[str, Any]:
+        """Convert a sessions table row to a summary dict with rounded numeric fields."""
         return {
             "session_id": row[0],
             "user_id": row[1] or "",
@@ -237,6 +252,7 @@ class InterviewLogger:
         }
 
     def get_analytics(self):
+        """Aggregate analytics: score distribution, per-model score arrays, and performance over time."""
         conn = sqlite3.connect(self.db_file)
         c = conn.cursor()
 

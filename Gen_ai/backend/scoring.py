@@ -11,6 +11,15 @@ try:
 except ImportError:
     HAS_SENTENCE_TRANSFORMERS = False
 
+"""
+Scoring engine providing multiple evaluation signals:
+- TF-IDF cosine similarity (keyword overlap)
+- BERT semantic similarity via sentence-transformers embeddings
+- Rule-based keyword matching
+- Heuristic LLM quality simulation (clarity, depth, concept coverage)
+- Confidence scoring from uncertainty language detection
+"""
+
 # Uncertainty/confidence detection patterns
 UNCERTAINTY_PATTERNS = [
     r'\b(i\s+think|maybe|probably|might|possibly|seems|appears|could|perhaps|somewhat|unclear)\b',
@@ -21,6 +30,7 @@ UNCERTAINTY_PATTERNS = [
 
 class ScoringEngine:
     def __init__(self, use_bert=True, alpha=0.3, beta=0.5, gamma=0.2):
+        """Initialize scoring with TF-IDF vectorizer, optional BERT model, and hybrid weights."""
         self.tfidf_vectorizer = TfidfVectorizer()
         self.use_bert = use_bert and HAS_SENTENCE_TRANSFORMERS
         
@@ -33,11 +43,13 @@ class ScoringEngine:
             self.bert_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def set_weights(self, alpha: float, beta: float, gamma: float):
+        """Update hybrid scoring weights at runtime."""
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
 
     def compute_tfidf_score(self, answer: str, reference: str) -> float:
+        """TF-IDF cosine similarity between answer and reference (0–1)."""
         if not answer.strip() or not reference.strip():
             return 0.0
         try:
@@ -50,11 +62,13 @@ class ScoringEngine:
     # Caching embeddings for performance optimization
     @lru_cache(maxsize=128)
     def _get_embedding(self, text: str):
+        """Cache BERT embeddings to avoid re-encoding the same text."""
         if not self.use_bert:
             return None
         return self.bert_model.encode(text)
 
     def compute_bert_similarity(self, answer: str, reference: str) -> float:
+        """BERT semantic cosine similarity; falls back to TF-IDF if BERT unavailable."""
         if not self.use_bert:
             return self.compute_tfidf_score(answer, reference)
             
@@ -71,7 +85,7 @@ class ScoringEngine:
         return float(max(0.0, score))
 
     def compute_rule_based_score(self, answer: str, reference: str) -> float:
-        # Baseline model 3: simple keyword matching
+        """Simple keyword overlap ratio (baseline model for comparison)."""
         ref_words = set(reference.lower().split())
         ans_words = set(answer.lower().split())
         if not ref_words:
@@ -80,8 +94,7 @@ class ScoringEngine:
         return len(overlap) / len(ref_words)
 
     def compute_concept_coverage_clustering(self, answer: str, reference: str) -> float:
-        # Bonus Feature: Concept coverage scoring using semantic clustering
-        # We divide reference into chunks (pseudo clusters) and check if answer covers them
+        """Measure how many concept chunks in the reference are covered by the answer."""
         chunks = [c.strip() for c in reference.split('.') if len(c.strip()) > 10]
         if not chunks:
             return self.compute_bert_similarity(answer, reference)
@@ -95,8 +108,8 @@ class ScoringEngine:
 
     def compute_llm_quality(self, answer: str, reference: str, question: str) -> dict:
         """
-        Simulates an LLM structured evaluation.
-        In production, replace with actual OpenAI API call.
+        Heuristic LLM-quality simulation returning clarity, depth, concept coverage,
+        missing concepts, and improvement suggestions (fallback when real LLM is off).
         """
         ans_len = len(answer.split())
         ref_len = len(reference.split())
@@ -144,14 +157,15 @@ class ScoringEngine:
         }
 
     def compute_final_score(self, tfidf: float, bert: float, llm: float) -> float:
+        """Weighted hybrid score scaled to 0–10 for frontend display."""
         score = self.alpha * tfidf + self.beta * bert + self.gamma * llm
         # scale from 0-1 to 0-10 for frontend
         return max(0.0, min(10.0, score * 10.0))
 
     def compute_confidence_score(self, answer: str) -> float:
         """
-        Detect uncertainty words in answer to estimate confidence.
-        Returns score between 0-1 (1 = very confident, 0 = very uncertain).
+        Estimate answer confidence from uncertainty language (hedges, fillers, questions).
+        Returns 1.0 for confident language, 0.0 for very uncertain.
         """
         if not answer.strip():
             return 0.0

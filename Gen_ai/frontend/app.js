@@ -1,6 +1,13 @@
 // Dynamically set API URL based on environment (supports Live Server on :5500)
 const API_BASE_URL = window.location.port === '5500' ? 'http://localhost:8000/api' : '/api';
 
+/*
+Main frontend application for the AI interview system.
+Handles interview flow (setup → questions → evaluation → report),
+speech recognition, theme toggling, session history, and PDF export.
+Depends on backend API at /api/* for question generation and evaluation.
+*/
+
 // =====================================================
 // State
 // =====================================================
@@ -15,10 +22,12 @@ let interviewHistory = [];
 const USER_ID_KEY = 'aiInterviewUserId';
 
 function generateUserId() {
+    """Generate a random user ID with timestamp for session tracking."""
     return `user_${Math.random().toString(36).slice(2, 10)}_${Date.now()}`;
 }
 
 function getUserId() {
+    """Retrieve or create persistent user ID from localStorage."""
     let stored = localStorage.getItem(USER_ID_KEY);
     if (!stored) {
         stored = generateUserId();
@@ -28,6 +37,7 @@ function getUserId() {
 }
 
 function generateSessionId() {
+    """Generate unique session ID using crypto.randomUUID or fallback."""
     if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
     return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -81,6 +91,7 @@ if (userIdLabel) userIdLabel.textContent = userId;
 // View switching
 // =====================================================
 function showView(name) {
+    """Show the named view (setup, interview, or report) and hide all others."""
     views.forEach(v => {
         if (v.dataset.view === name) v.removeAttribute('hidden');
         else v.setAttribute('hidden', '');
@@ -167,6 +178,7 @@ if (SpeechRecognition) {
 }
 
 function stopRecording() {
+    """Reset recording state and hide the recording indicator."""
     isRecording = false;
     if (recordingIndicator) {
         recordingIndicator.hidden = true;
@@ -200,6 +212,7 @@ if (micBtn) {
 const synth = window.speechSynthesis;
 
 function speakText(text) {
+    """Speak the given text aloud using Web Speech API with English voice preference."""
     if (!synth) return;
     if (synth.speaking) synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -341,6 +354,7 @@ const themeToggle = document.getElementById('themeToggle');
 const themeLabelText = document.getElementById('themeLabelText');
 
 function applyTheme(theme) {
+    """Apply dark or light theme by setting data-theme attribute and updating toggle state."""
     const isDark = theme === 'dark';
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     if (themeToggle) themeToggle.setAttribute('aria-checked', isDark ? 'true' : 'false');
@@ -348,10 +362,12 @@ function applyTheme(theme) {
 }
 
 function getStoredTheme() {
+    """Retrieve saved theme from localStorage, or null if none stored."""
     try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
 }
 
 function setStoredTheme(theme) {
+    """Persist theme choice to localStorage."""
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* ignore */ }
 }
 
@@ -406,6 +422,7 @@ if (pastModal) {
 }
 
 function openPastSession(sessionId) {
+    """Fetch and display a past session's details in the modal overlay."""
     if (!pastModal) return;
     pastModal.hidden = false;
     pastModalBody.innerHTML = '<p class="session-empty">Loading...</p>';
@@ -421,10 +438,12 @@ function openPastSession(sessionId) {
 }
 
 function closePastSession() {
+    """Hide the past session modal."""
     if (pastModal) pastModal.hidden = true;
 }
 
 function renderPastSession(session) {
+    """Render session summary and question list into the past session modal."""
     const started = session.started_at || '';
     const ended = session.ended_at || '';
     const avgPct = (session.avg_score * 10).toFixed(2);
@@ -468,6 +487,7 @@ function renderPastSession(session) {
 // Sidebar: load & render sessions
 // =====================================================
 async function loadSessions() {
+    """Fetch recent sessions from API and render them in the sidebar."""
     if (!sessionList) return;
     sessionList.innerHTML = '<p class="session-empty">Loading...</p>';
     try {
@@ -483,6 +503,7 @@ async function loadSessions() {
 }
 
 function renderSessionList(sessions) {
+    """Render session list items in the sidebar with score color coding."""
     if (!sessions || sessions.length === 0) {
         sessionList.innerHTML = '<p class="session-empty">No past interviews yet.</p>';
         return;
@@ -511,6 +532,7 @@ function renderSessionList(sessions) {
 }
 
 function formatSessionDate(iso) {
+    """Format ISO timestamp to human-friendly 'Today/Hesterday' or 'Mon DD, YYYY' display."""
     if (!iso) return '';
     const d = new Date(iso.replace(' ', 'T'));
     if (isNaN(d.getTime())) return iso;
@@ -532,6 +554,7 @@ let questionStartTime = 0;
 let timeInterval = null;
 
 function updateBadge() {
+    """Update the difficulty badge display with current difficulty level."""
     if (levelBadge) {
         const cap = currentDifficulty.charAt(0).toUpperCase() + currentDifficulty.slice(1);
         levelBadge.textContent = cap;
@@ -539,6 +562,7 @@ function updateBadge() {
 }
 
 function resetLivePanel() {
+    """Reset score circle, progress bars, and feedback box to initial state."""
     if (scorePath) scorePath.setAttribute('stroke-dasharray', '0, 100');
     if (scoreText) scoreText.textContent = '--';
     [semanticBar, keywordBar, llmBar].forEach(b => { if (b) b.style.width = '0%'; });
@@ -550,6 +574,7 @@ function resetLivePanel() {
 }
 
 function appendMessage(text, sender) {
+    """Add a message to the chatbox (ai/user/system) and return its element ID."""
     if (!chatbox) return null;
     const div = document.createElement('div');
     const id = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -587,6 +612,7 @@ function appendMessage(text, sender) {
 }
 
 function updateMessage(id, newText, senderClass) {
+    """Update an existing message's content and styling by ID."""
     const el = id ? document.getElementById(id) : null;
     if (!el) return;
     const parsed = (typeof marked !== 'undefined') ? marked.parse(newText) : escapeHtml(newText);
@@ -596,6 +622,7 @@ function updateMessage(id, newText, senderClass) {
 }
 
 async function fetchNextQuestion() {
+    """Fetch next question from backend or use offline simulation fallback."""
     try {
         let questionData = {
             question: `Explain the core concepts of ${currentTopic} relevant to a ${currentRole} at a ${currentDifficulty} level.`,
@@ -651,6 +678,7 @@ async function fetchNextQuestion() {
 }
 
 async function submitAnswer(userAnswer, typingId) {
+    """Submit user's answer, fetch evaluation from backend, update live panel, and load next question."""
     if (timeInterval) clearInterval(timeInterval);
     const timeTaken = Math.floor((Date.now() - questionStartTime) / 1000);
 
@@ -758,6 +786,7 @@ async function submitAnswer(userAnswer, typingId) {
 }
 
 function buildFeedbackText(expl, ev) {
+    """Build markdown feedback string from evaluation explanation and LLM score."""
     const pct = (v) => v === undefined || v === null ? 'N/A' : (v * 100).toFixed(0) + '%';
     const missing = (expl.missing_concepts && expl.missing_concepts.length) ? expl.missing_concepts.join(', ') : 'None';
     const improvements = (expl.improvement_suggestions && expl.improvement_suggestions.length) ? expl.improvement_suggestions.join(', ') : 'None';
@@ -765,6 +794,7 @@ function buildFeedbackText(expl, ev) {
 }
 
 function animateScore(score) {
+    """Animate the SVG score circle from 0 to target score over 1 second."""
     const percentage = (score / 10) * 100;
     setTimeout(() => {
         if (scorePath) {
@@ -789,6 +819,7 @@ function animateScore(score) {
 // Report
 // =====================================================
 function computeReportStats() {
+    """Compute summary stats (avg, max, min, trend, difficulty progression) for the report view."""
     const total = interviewHistory.length;
     if (total === 0) {
         return { total: 0, avg: 0, max: 0, min: 0, totalTime: 0, trend: '—', trendClass: 'trend-flat', startDiff: '—', endDiff: '—', difficulties: [] };
@@ -809,6 +840,7 @@ function computeReportStats() {
 }
 
 function escapeHtml(str) {
+    """Escape HTML special characters to prevent XSS in rendered content."""
     return String(str == null ? '' : str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -818,17 +850,20 @@ function escapeHtml(str) {
 }
 
 function scoreClass(score) {
+    """Return CSS class for score color coding (strong/average/needs-work)."""
     if (score >= 7) return 'q-strong';
     if (score >= 4) return 'q-average';
     return 'q-needs-work';
 }
 function scoreLabel(score) {
+    """Return human-readable label for score tier."""
     if (score >= 7) return 'Strong';
     if (score >= 4) return 'Average';
     return 'Needs work';
 }
 
 function generateReport() {
+    """Populate the report view with stats, feedback, roadmap, and question breakdown."""
     const stats = computeReportStats();
     const avgScore = stats.avg.toFixed(2);
     const min = Math.floor(stats.totalTime / 60);
@@ -924,6 +959,7 @@ function generateReport() {
 }
 
 function buildReportHtml() {
+    """Generate self-contained HTML for the interview report (used by PDF export and print)."""
     const stats = computeReportStats();
     const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const avgScore = stats.total === 0 ? '0.00' : stats.avg.toFixed(2);
@@ -996,6 +1032,7 @@ function buildReportHtml() {
 }
 
 function printReport() {
+    """Open report HTML in a new window and trigger browser print dialog."""
     const html = buildReportHtml();
     const styles = `body { margin: 0; } @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }`;
     const w = window.open('', '_blank');
@@ -1012,6 +1049,7 @@ function printReport() {
 }
 
 function downloadReportPdf() {
+    """Export interview report as PDF using html2pdf.js, falling back to print dialog."""
     const reportHtml = buildReportHtml();
     const filename = `Interview_Report_${(currentRole || 'Session').replace(/[^a-zA-Z0-9]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
 

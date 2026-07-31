@@ -1,3 +1,10 @@
+/*
+Main stylesheet for the AI interview application.
+Uses CSS custom properties (design tokens) for consistent theming across light and dark modes.
+Covers sidebar, setup form, interview chat, live scoring panel, report view, and modal overlays.
+Responsive breakpoints at 980px and 720px for mobile layouts.
+*/
+
 /* ==================================
    DESIGN TOKENS
    ================================== */

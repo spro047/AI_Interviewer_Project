@@ -10,6 +10,11 @@ from ai_engine import HybridInterviewEngine
 
 load_dotenv()
 
+"""
+FastAPI application exposing the interview engine via REST endpoints.
+Mounts the frontend static files at root and provides API routes under /api/.
+"""
+
 app = FastAPI(title="AI Mock Interview Engine API")
 
 app.add_middleware(
@@ -24,6 +29,7 @@ engine = HybridInterviewEngine(use_bert=True, use_llm=None)
 
 
 def _warm_up_llm():
+    """Fire a 1-token warm-up request in background to avoid cold-start latency on first real call."""
     if not engine.llm:
         return
     if os.environ.get("LLM_WARMUP", "true").lower() not in ("1", "true", "yes"):
@@ -34,15 +40,18 @@ def _warm_up_llm():
 
 @app.on_event("startup")
 def _on_startup():
+    """Trigger LLM warm-up on server start if enabled."""
     _warm_up_llm()
 
 class InterviewRequest(BaseModel):
+    """Request to generate a new interview question."""
     role: str
     topic: str
     difficulty: str
     history: List[str] = []
 
 class AnswerRequest(BaseModel):
+    """Request to evaluate a user's answer against the ideal answer."""
     user_id: str = "default_user"
     question: str
     user_answer: str
@@ -54,15 +63,18 @@ class AnswerRequest(BaseModel):
 
 
 class EndSessionRequest(BaseModel):
+    """Request to end an interview session and compute final aggregates."""
     session_id: str
 
 @app.post("/api/generate_question")
 def generate_question(req: InterviewRequest):
+    """Generate a new interview question based on role, topic, difficulty, and history."""
     question, ideal_answer = engine.generate_question(req.role, req.topic, req.difficulty, req.history)
     return {"question": question, "ideal_answer": ideal_answer}
 
 @app.post("/api/evaluate_answer")
 def evaluate_answer(req: AnswerRequest):
+    """Evaluate user's answer, return hybrid scores, explanation, and next difficulty."""
     result = engine.evaluate_answer_hybrid(
         req.user_id,
         req.question,
@@ -83,12 +95,14 @@ def evaluate_answer(req: AnswerRequest):
 
 @app.get("/api/sessions")
 def list_sessions(user_id: str = None, limit: int = 50):
+    """List past interview sessions, optionally filtered by user_id, most recent first."""
     sessions = engine.list_sessions(user_id=user_id, limit=limit)
     return {"sessions": sessions}
 
 
 @app.get("/api/sessions/{session_id}")
 def get_session(session_id: str):
+    """Retrieve full session details including all questions, answers, and scores."""
     session = engine.get_session(session_id)
     if session is None:
         from fastapi import HTTPException
@@ -98,16 +112,18 @@ def get_session(session_id: str):
 
 @app.post("/api/end_session")
 def end_session(req: EndSessionRequest):
+    """Mark session as ended and compute final aggregates (avg/max/min score, question count)."""
     engine.end_session(req.session_id)
     return {"session_id": req.session_id, "ended": True}
 
 @app.get("/api/get_analytics")
 def get_analytics():
+    """Return aggregated analytics: score distribution, model comparisons, performance over time."""
     return engine.get_analytics()
 
 @app.get("/api/analytics/detailed")
 def get_detailed_analytics():
-    """Research-grade analytics endpoint with model comparison and performance metrics."""
+    """Research-grade analytics with per-model mean/min/max/std_dev statistics."""
     analytics = engine.get_analytics()
     
     # Add model comparison analysis

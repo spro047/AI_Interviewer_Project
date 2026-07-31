@@ -12,6 +12,12 @@ try:
 except ImportError:
     HAS_SENTENCE_TRANSFORMERS = False
 
+"""
+Core interview engine combining TF-IDF, BERT embeddings, and optional LLM evaluation.
+Wires together scoring, adaptive difficulty, logging, and LLM client into a unified
+HybridInterviewEngine that powers the /api/generate_question and /api/evaluate_answer endpoints.
+"""
+
 QUESTION_BANK = [
     ("Explain the fundamental concept of {topic} in your own words.",
      "Provide a clear definition, its purpose, and a real-world analogy.",
@@ -109,6 +115,7 @@ _SCORING_ENGINE = None
 
 
 def _normalize_score(score: float) -> float:
+    """Clamp any numeric input to the 0.0–1.0 range, returning 0.0 on failure."""
     try:
         score = float(score)
     except (TypeError, ValueError):
@@ -118,6 +125,7 @@ def _normalize_score(score: float) -> float:
 
 
 def _get_scoring_engine() -> ScoringEngine:
+    """Lazy singleton for the TF-IDF-only scoring engine (no BERT to avoid cold start)."""
     global _SCORING_ENGINE
 
     if _SCORING_ENGINE is None:
@@ -127,6 +135,7 @@ def _get_scoring_engine() -> ScoringEngine:
 
 @lru_cache(maxsize=1)
 def _get_sentence_transformer():
+    """Load the sentence transformer model once, returning None if unavailable."""
     if not HAS_SENTENCE_TRANSFORMERS:
         return None
 
@@ -138,6 +147,7 @@ def _get_sentence_transformer():
 
 @lru_cache(maxsize=128)
 def _get_semantic_embedding(text: str):
+    """Return cached embedding for text, or None if model missing or text empty."""
     model = _get_sentence_transformer()
     if model is None or not text.strip():
         return None
@@ -149,11 +159,13 @@ def _get_semantic_embedding(text: str):
 
 
 def compute_tfidf_score(answer, reference):
+    """TF-IDF cosine similarity between answer and reference, normalized to 0–1."""
     score = _get_scoring_engine().compute_tfidf_score(answer or "", reference or "")
     return _normalize_score(score)
 
 
 def compute_semantic_score(answer, reference):
+    """BERT embedding cosine similarity; falls back to TF-IDF if embeddings unavailable."""
     answer = answer or ""
     reference = reference or ""
     if not answer.strip() or not reference.strip():
@@ -173,6 +185,7 @@ def compute_semantic_score(answer, reference):
 
 
 def compute_llm_score(answer, reference):
+    """Heuristic LLM quality score (clarity + depth + concept coverage) / 3."""
     answer = answer or ""
     reference = reference or ""
     if not answer.strip() or not reference.strip():
@@ -183,6 +196,7 @@ def compute_llm_score(answer, reference):
 
 
 def compute_hybrid_score(tfidf_score, semantic_score, llm_score):
+    """Weighted combination: 30% TF-IDF + 50% semantic + 20% LLM, clamped to 0–1."""
     final_score = (
         0.3 * _normalize_score(tfidf_score)
         + 0.5 * _normalize_score(semantic_score)
@@ -193,6 +207,10 @@ def compute_hybrid_score(tfidf_score, semantic_score, llm_score):
 
 class HybridInterviewEngine:
     def __init__(self, use_bert=True, use_llm: bool | None = None):
+        """
+        Initialize the hybrid engine with scoring, adaptive difficulty, logging,
+        and optional LLM client (controlled by USE_LLM env var).
+        """
         self.scoring = ScoringEngine(use_bert=use_bert)
         self.adaptive = AdaptiveEngine()
         self.logger = InterviewLogger()
@@ -210,6 +228,10 @@ class HybridInterviewEngine:
                 self.llm = None
 
     def generate_question(self, role: str, topic: str, difficulty: str, history: list = None) -> tuple[str, str]:
+        """
+        Generate an interview question. Tries LLM first, falls back to template bank.
+        Avoids repeating questions from history and prefers unasked templates.
+        """
         if self.llm is not None:
             try:
                 return self.llm.generate_question(role, topic, difficulty, history)
@@ -264,7 +286,10 @@ class HybridInterviewEngine:
         role: str = "",
         session_id: str = "",
     ):
-
+        """
+        Evaluate a user's answer using hybrid scoring (TF-IDF + BERT + LLM),
+        update adaptive difficulty, log results, and return detailed breakdown.
+        """
         # 1. Calculate base scores
         tfidf_score = compute_tfidf_score(user_answer, ideal_answer)
         semantic_score = compute_semantic_score(user_answer, ideal_answer)
@@ -356,13 +381,17 @@ class HybridInterviewEngine:
         }
         
     def get_analytics(self):
+        """Return aggregated analytics from the logger (score distribution, model comparisons, etc.)."""
         return self.logger.get_analytics()
 
     def list_sessions(self, user_id: str = None, limit: int = 50):
+        """List past interview sessions, optionally filtered by user_id, most recent first."""
         return self.logger.list_sessions(user_id=user_id, limit=limit)
 
     def get_session(self, session_id: str):
+        """Retrieve full session details including all questions and scores."""
         return self.logger.get_session(session_id)
 
     def end_session(self, session_id: str):
+        """Mark a session as ended and compute final aggregates (avg/max/min score)."""
         self.logger.end_session(session_id)
